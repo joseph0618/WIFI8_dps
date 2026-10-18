@@ -1,0 +1,406 @@
+﻿\documentclass[11pt,a4paper]{article}
+\usepackage[margin=25mm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,longtable}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[hidelinks]{hyperref}
+\newcommand{\ind}{\mathbf{1}}
+\newcommand{\avg}[1]{\sum_{k=0}^{N}\pi_k #1}
+\title{Mathematical Analysis of UL Trigger-Based DPS\\
+\large Detailed Derivation of the Implemented Saturated Approximation}
+\author{}
+\date{}
+\begin{document}
+\maketitle
+\begin{abstract}
+A station first wins contention to report an EBSR; the AP subsequently wins
+separate contention to serve that report using an HC uplink exchange. We
+construct a reduced state-dependent contention model and derive its
+stationary probabilities, channel holding times, throughput, collision ratio
+per attempt, time occupancy, and all-STA energy rewards. The equations match
+\texttt{src/dps\_sim/analytical.py}. The reduced chain is an approximation,
+not an exact Markov description of the packet simulator.
+\end{abstract}
+\tableofcontents
+
+\section{Operation, assumptions, and units}
+There are $N\geq1$ saturated STAs and one AP sharing a serialized channel.
+A successful packet requires two separate contention wins:
+\begin{enumerate}
+\item The STA wins a TXOP, sends EBSR on LC, and leaves contention while
+waiting for its report to be served.
+\item The AP wins a later TXOP and serves the oldest report: ICF on LC,
+switch up, ICR--DATA--ACK on HC, then switch down to LC.
+\end{enumerate}
+The AP is one contender whenever reports are pending. Each report requests
+one packet; each grant serves one packet, FIFO. After delivery the saturated
+STA immediately has a replacement packet. Backoff counters freeze during
+busy events. Retries are unlimited, but the stage is capped at $m$.
+
+We assume identical contention parameters, no PHY errors, hidden nodes,
+capture, aggregation, or concurrent exchanges. EBSR and ICF have equal
+lengths and rates. Switching occupies channel time and does not overlap
+interframe gaps. Only the served STA switches to HC; AP energy is excluded.
+These assumptions define a research abstraction, not a full IEEE implementation.
+
+Durations use microseconds, rates use bits per microsecond (numerically Mbps),
+lengths use bits, and powers use watts. Let $\gamma=10^{-6}$ seconds per
+microsecond. A frame of $b$ bits at rate $R$ occupies $b/R$ microseconds
+and consumes $\gamma(b/R)P$ joules at power $P$.
+\begin{longtable}{@{}lll@{}}
+\toprule Symbol & Meaning & Default\\\midrule
+$N$ & Number of STAs & varied\\
+$W,m$ & Initial window size, maximum stage & $32,5$\\
+$\sigma$ & Idle slot & $50\,\mu$s\\
+$s,d,\delta$ & SIFS, DIFS, propagation & $28,128,1\,\mu$s\\
+$L,h$ & Payload, DATA header & $8184,400$ bits\\
+$e,f$ & EBSR, ICF including PHY & $288,288$ bits\\
+$r,a$ & ICR, ACK including PHY & $240,240$ bits\\
+$R_C,R_H$ & Control, HC DATA rate & $1,10$ Mbps\\
+$u,v$ & Switch up, switch down & $100,100\,\mu$s\\
+$P_{L,i},P_{L,r},P_{L,t}$ & LC idle, RX, TX & $0.10,0.20,0.50$ W\\
+$P_{H,i},P_{H,r},P_{H,t}$ & HC idle, RX, TX & $0.30,0.50,1.00$ W\\
+$P_{sw}$ & Served-STA switching power & $0.40$ W\\
+\bottomrule
+\end{longtable}
+
+\section{Local contention model}
+\subsection{Active population}
+Let $K=k\in\{0,\ldots,N\}$ count reported STAs awaiting service. Define
+\begin{equation}
+n_k=N-k,\qquad b_k=\ind_{\{k>0\}},\qquad M_k=n_k+b_k.
+\end{equation}
+There are $n_k$ eligible STAs and at most one active AP contender. In
+particular, $M_0=N$ and $M_N=1$. Treating DPS as $N+1$ always-active nodes
+would ignore the withdrawal of reported STAs.
+
+\subsection{Backoff attempt probability}
+For a tagged contender, approximate the collision probability by a constant
+$p<1$ during a local equilibrium calculation. At stage $i$, its counter is
+uniform on $\{0,\ldots,W2^i-1\}$. Consider a renewal cycle ending at its next
+success. Expected stage-visit weights are
+\begin{equation}
+v_i=p^i\quad(0\leq i<m),\qquad v_m=\frac{p^m}{1-p}.
+\end{equation}
+The capped stage can be revisited indefinitely. The mean attempts per cycle
+are $\sum_i v_i=1/(1-p)$. Each visit contributes one attempt and an expected
+$(W2^i-1)/2$ idle countdown opportunities. Therefore the attempt probability
+in the decoupled virtual-opportunity description is
+\begin{align}
+\tau(p)&=\frac{\sum_i v_i}{\sum_i v_i[1+(W2^i-1)/2]}\\
+&=\frac{2}{1+W(1-p)\sum_i v_i2^i}.
+\end{align}
+Using the identity
+\begin{align}
+(1-p)\sum_{i=0}^{m}v_i2^i
+&=(1-p)\sum_{i=0}^{m-1}(2p)^i+(2p)^m\\
+&=1+p\sum_{j=0}^{m-1}(2p)^j,
+\end{align}
+we obtain
+\begin{equation}\label{eq:tau}
+\boxed{\tau(p)=\frac{2}{W+1+Wp\sum_{j=0}^{m-1}(2p)^j}}.
+\end{equation}
+The polynomial form is valid at $p=1/2$; for $m=0$ the sum is empty.
+For state $k$, assume independent attempts by all $M_k$ contenders:
+\begin{equation}\label{eq:fixed}
+p_k=1-(1-\tau_k)^{M_k-1},\qquad \tau_k=\tau(p_k).
+\end{equation}
+A tagged attempt collides when at least one other contender transmits. When
+$M_k=1$, $p_k=0$ and $\tau_k=2/(W+1)$.
+
+This is a local equilibrium closure. The real simulator retains individual
+counters, stages, and FIFO identities. A change in $k$ does not actually
+reset the remaining contenders to independent equilibrium samples.
+
+\section{Virtual events and the embedded chain}
+A virtual event is one idle countdown slot or a complete busy event. Its
+four mutually exclusive outcomes have probabilities
+\begin{align}
+P_0(k)&=(1-\tau_k)^{M_k},\\
+P_E(k)&=n_k\tau_k(1-\tau_k)^{M_k-1},\\
+P_A(k)&=b_k\tau_k(1-\tau_k)^{M_k-1},\\
+P_C(k)&=1-P_0(k)-P_E(k)-P_A(k).
+\end{align}
+$P_E$ sums the disjoint outcomes where exactly one eligible STA transmits;
+$P_A$ is the outcome where only the AP transmits. $P_C$ is a collision-event
+probability, distinct from conditional collision probability $p_k$.
+The boundaries satisfy $P_A(0)=0$ and $P_E(N)=0$.
+
+A successful report increments $k$; AP success decrements it. Thus
+\begin{equation}
+Q_{k\ell}=\begin{cases}
+P_E(k),&\ell=k+1,\\
+P_A(k),&\ell=k-1,\\
+P_0(k)+P_C(k),&\ell=k,\\
+0,&\text{otherwise},
+\end{cases}
+\end{equation}
+with out-of-range transitions omitted. Detailed balance gives
+\begin{equation}
+\pi_kP_E(k)=\pi_{k+1}P_A(k+1),\qquad 0\leq k<N.
+\end{equation}
+Writing $w_0=1$, the stationary distribution is
+\begin{equation}
+w_k=\prod_{j=0}^{k-1}\frac{P_E(j)}{P_A(j+1)},\qquad
+\pi_k=\frac{w_k}{\sum_{\ell=0}^{N}w_\ell}.
+\end{equation}
+Numerically, use $\ell_0=0$ and
+$\ell_{k+1}=\ell_k+\log P_E(k)-\log P_A(k+1)$, then normalize
+$\exp(\ell_k-\max_j\ell_j)$ to avoid overflow.
+
+Define report and service probabilities per virtual event:
+\begin{equation}
+q_E=\avg{P_E(k)},\qquad q_A=\avg{P_A(k)}.
+\end{equation}
+Zero stationary drift implies
+\begin{equation}
+0=\mathbb E[K_{j+1}-K_j]=q_E-q_A.
+\end{equation}
+This checks report conservation; it does not validate the approximate state
+occupancy against simulation.
+
+\section{Holding times and throughput}
+\subsection{Channel duration of each event}
+The report event occupies
+\begin{equation}
+T_E=e/R_C+\delta+d.
+\end{equation}
+The successful AP exchange has the serialized phases below.
+\begin{center}
+\begin{tabular}{@{}ll@{}}\toprule
+Phase & Duration ($\mu$s)\\\midrule
+ICF, LC & $f/R_C$\\
+First gap, LC & $s+\delta$\\
+Switch up & $u$\\
+ICR, HC & $r/R_C$\\
+Second gap, HC & $s+\delta$\\
+DATA, HC & $(h+L)/R_H$\\
+Third gap, HC & $s+\delta$\\
+ACK, HC & $a/R_C$\\
+Switch down & $v$\\
+Final gap, LC & $d+\delta$\\\bottomrule
+\end{tabular}
+\end{center}
+Summing gives
+\begin{equation}
+T_U=(f+r+a)/R_C+(h+L)/R_H+3s+d+4\delta+u+v.
+\end{equation}
+HC operation does not accelerate control frames. Since $e=f$, all
+contention collisions have fixed frame airtime $t_f=e/R_C$ and
+\begin{equation}
+T_C=t_f+d+\delta.
+\end{equation}
+Unequal EBSR/ICF airtimes need collision-type-specific rewards and are
+rejected by the current analytical function.
+
+\subsection{Reward normalization}
+The conditional mean event duration and its stationary mean are
+\begin{equation}
+t_k=P_0(k)\sigma+P_E(k)T_E+P_A(k)T_U+P_C(k)T_C,
+\qquad \bar t=\avg{t_k}.
+\end{equation}
+Each AP success earns $L$ payload bits. The event-reward ratio therefore
+produces
+\begin{align}
+S&=\frac{Lq_A}{\bar t}\quad\text{Mbps},\\
+\lambda_{del}&=\frac{q_A}{\gamma\bar t}\quad\text{packets/s},\\
+C_{packet}&=\frac{\bar t}{1000q_A}\quad\text{ms/delivery}.
+\end{align}
+$C_{packet}$ is aggregate channel time per delivery, not a tagged packet's
+arrival-to-ACK delay.
+
+\section{Collision ratio per transmission attempt}
+Let $X_k$ count transmitting contenders in a virtual event. The local
+closure makes $X_k$ binomial with parameters $(M_k,\tau_k)$. Thus
+\begin{equation}
+A_k=\mathbb E[X_k\mid k]=M_k\tau_k.
+\end{equation}
+A successful event contains exactly one attempt. Removing successes gives
+\begin{align}
+C_k&=\mathbb E[X_k\ind_{\{X_k\geq2\}}\mid k]\\
+&=M_k\tau_k-P_E(k)-P_A(k)\\
+&=M_k\tau_k[1-(1-\tau_k)^{M_k-1}]=A_kp_k.
+\end{align}
+The requested ratio is
+\begin{equation}\label{eq:collision}
+\boxed{\rho=\frac{\avg{C_k}}{\avg{A_k}}
+=\frac{\avg{A_kp_k}}{\avg{A_k}}}.
+\end{equation}
+It is dimensionless and attempt-weighted. Three colliding senders add three
+to each count. Successful EBSR and AP ICF each add one denominator attempt;
+protected ICR/DATA/ACK add no separate contention attempts.
+
+For distinction, collision events per second would be
+$\sum_k\pi_kP_C(k)/(\gamma\bar t)$, and collision events per delivered
+packet would be $\sum_k\pi_kP_C(k)/q_A$. Neither is the current collision
+validation metric in Equation~\eqref{eq:collision}.
+
+\section{Time occupancy and channel fractions}
+Longer events occupy more elapsed time. Consequently
+\begin{equation}
+\omega_k=\frac{\pi_kt_k}{\bar t},\qquad
+\sum_k\omega_k=1,\qquad \overline K=\sum_k k\omega_k.
+\end{equation}
+The idle, successful-exchange, and collision time fractions are
+\begin{align}
+F_0&=\frac{\sigma\sum_k\pi_kP_0(k)}{\bar t},\\
+F_U&=\frac{T_Eq_E+T_Uq_A}{\bar t},\\
+F_C&=\frac{T_C\sum_k\pi_kP_C(k)}{\bar t}.
+\end{align}
+By construction $F_0+F_U+F_C=1$. The success fraction includes its gaps
+and switches; it is not payload-only airtime.
+
+\section{Detailed all-STA energy rewards}
+\subsection{Successful EBSR}
+One STA transmits and the other $N-1$ receive on LC. All idle during the
+trailing gap, giving
+\begin{equation}
+E_E=\gamma\left[\frac e{R_C}(P_{L,t}+(N-1)P_{L,r})
++(d+\delta)NP_{L,i}\right].
+\end{equation}
+
+\subsection{Successful AP exchange}
+Define aggregate powers including all other STAs:
+\begin{align}
+P_{Ht}&=P_{H,t}+(N-1)P_{L,r},&P_{Hr}&=P_{H,r}+(N-1)P_{L,r},\\
+P_{Hi}&=P_{H,i}+(N-1)P_{L,i},&P_{Ss}&=P_{sw}+(N-1)P_{L,i}.
+\end{align}
+The complete reward, with each term matched to its phase, is
+\begin{align}
+E_U=\gamma\Bigl[&
+\underbrace{\frac f{R_C}NP_{L,r}}_{\text{ICF}}+
+\underbrace{(s+\delta)NP_{L,i}}_{\text{first gap}}\notag\\
+&+\underbrace{uP_{Ss}}_{\text{switch up}}+
+\underbrace{\frac r{R_C}P_{Ht}}_{\text{ICR}}+
+\underbrace{(s+\delta)P_{Hi}}_{\text{second gap}}\notag\\
+&+\underbrace{\frac{h+L}{R_H}P_{Ht}}_{\text{DATA}}+
+\underbrace{(s+\delta)P_{Hi}}_{\text{third gap}}\notag\\
+&+\underbrace{\frac a{R_C}P_{Hr}}_{\text{ACK}}+
+\underbrace{vP_{Ss}}_{\text{switch down}}+
+\underbrace{(d+\delta)NP_{L,i}}_{\text{final gap}}\Bigr].
+\end{align}
+The AP sends ICF and ACK, but its transmit energy is excluded. Other STAs
+use LC receive accounting during HC frames. That is an energy assumption,
+not a claim that those STAs decode HC frames.
+
+\subsection{Collision reward without double weighting}
+Let $Z_k$ be the number of transmitting STAs, excluding the AP. Its mean
+is $n_k\tau_k$. A successful EBSR has one STA sender, and a successful AP
+ICF has none. The unconditional collision-restricted sender count is
+\begin{equation}
+x_k=\mathbb E[Z_k\ind_{\{X_k\geq2\}}\mid k]
+=n_k\tau_k-P_E(k).
+\end{equation}
+The collision-restricted number of nontransmitting STA receivers has mean
+$NP_C(k)-x_k$. Hence the already probability-weighted reward is
+\begin{equation}
+\widetilde E_C(k)=\gamma\left[
+t_f\{x_kP_{L,t}+(NP_C(k)-x_k)P_{L,r}\}
++P_C(k)(d+\delta)NP_{L,i}\right].
+\end{equation}
+Do not multiply by $P_C(k)$ again. This counts all senders without assuming
+that a collision always involves exactly two nodes.
+
+\subsection{Mean power and energy per delivery}
+The idle-event reward is $E_0=\gamma\sigma NP_{L,i}$. Set
+\begin{equation}
+E_k=P_0(k)E_0+P_E(k)E_E+P_A(k)E_U+\widetilde E_C(k),
+\qquad\bar E=\avg{E_k}.
+\end{equation}
+Then
+\begin{equation}
+\boxed{\overline P_{STA}=\frac{\bar E}{N\gamma\bar t}\ \text{W}},
+\qquad
+\boxed{E_{packet}=1000\frac{\bar E}{q_A}\ \text{mJ}}.
+\end{equation}
+Packet energy includes the waiting and overhearing energy of all STAs,
+normalized by successful deliveries, not only the served STA's own energy.
+
+\section{Intervening attempts after EBSR}
+For completed pair $j$, let $B_j$ be the cumulative network contention-attempt
+counter just after successful EBSR. Let $G_j$ include the corresponding
+successful AP ICF attempt. The simulator measures
+\begin{equation}
+I_j=G_j-B_j-1,\qquad \widehat I=\frac1D\sum_{j=1}^{D}I_j.
+\end{equation}
+$D$ counts packets whose ACK completes inside the observation window.
+Both endpoints are excluded. Other successful contentions count once;
+collisions count each sender. Protected response frames do not contend
+separately. With no delivery the mean is undefined (NaN). With one STA it
+is zero, since no other contender can intervene after that STA reports.
+
+This metric is simulation-only in the current implementation. Its analytical
+prediction would require extra tagged-report/FIFO-position information or a
+separate tagged-process analysis. Completed-pair selection can favor shorter
+waits in finite windows.
+
+\section{Closed-form checks}
+\subsection{Single-STA cycle}
+With $N=1$, there is one contender in each state, no collisions, and two
+fresh uniform backoffs per delivered packet. Each backoff has mean
+$(W-1)/2$ slots. Thus
+\begin{equation}
+T_{cycle}=(W-1)\sigma+T_E+T_U,\qquad S=L/T_{cycle}.
+\end{equation}
+Equivalently, $P_E(0)=P_A(1)=\tau=2/(W+1)$ and $\pi_0=\pi_1=1/2$.
+The reward formula gives
+\begin{equation}
+\frac{\bar t}{q_A}
+=\frac{2(1-\tau)\sigma+\tau(T_E+T_U)}{\tau}
+=(W-1)\sigma+T_E+T_U,
+\end{equation}
+matching the direct cycle derivation.
+
+\subsection{Uniform-power conservation}
+If all LC, HC, and switch powers equal $P$, every STA consumes $P$ at
+all times. Then
+\begin{align}
+E_E&=\gamma NPT_E,&E_U&=\gamma NPT_U,\\
+\widetilde E_C(k)&=\gamma NP P_C(k)T_C,&E_k&=\gamma NPt_k.
+\end{align}
+Therefore $\overline P_{STA}=P$, independently of collisions and switching.
+
+\section{Numerical procedure and validation}
+\begin{enumerate}
+\item For each $k$, compute the active population and solve
+Equation~\eqref{eq:fixed}.
+\item Evaluate event probabilities, holding time, and energy rewards.
+\item Normalize log weights to obtain the embedded stationary distribution.
+\item Check probability normalization and report/service flow balance.
+\item Accumulate service, time, attempt, collision, and energy rewards.
+\item Divide each reward by its correct denominator; embedded probabilities
+must not be substituted for time occupancy.
+\end{enumerate}
+Run \texttt{py -B tests/check\_models.py} for consistency checks and
+\texttt{py -B validate\_dps.py} for fresh saturated comparisons. Five
+scenarios, three station counts, and three seeds yield 45 default runs.
+Nine further runs examine 10/30/100-second windows at $N=50$.
+The numerical results are in
+\texttt{results/dps\_validation/comparison.csv} and its accompanying report.
+
+For independent simulated values $y_1,\ldots,y_R$, the script reports
+\begin{equation}
+\bar y=\frac1R\sum_{r=1}^{R}y_r,\qquad
+s_y^2=\frac1{R-1}\sum_{r=1}^{R}(y_r-\bar y)^2,\qquad
+\mathrm{SE}=\frac{s_y}{\sqrt R}.
+\end{equation}
+Relative prediction error is
+\begin{equation}
+100\frac{y_{analytical}-\bar y}{\bar y}\%,\qquad\bar y\ne0.
+\end{equation}
+Error bars are one SE, not 95\% confidence intervals. Plot axes begin at
+zero; this display choice does not change numerical errors.
+
+The prediction is stationary, whereas simulation starts at $k=0$ with no
+pending reports. Counter/stage memory, report identities, and initial
+transients are not captured by the reduced closure. Close throughput
+agreement does not imply accurate collision dynamics or validated internal
+occupancy. Poisson delay/PRR, tagged-report counts, analytical state
+occupancy, and PHY/standard correctness are outside this validation scope.
+
+\section*{Attribution}
+The DCF fixed-point closure follows the Bianchi decoupling approach
+(2000, DOI \texttt{10.1109/49.840210}). The DPS state reduction, holding times,
+and reward construction here are this project's approximation, not results
+claimed from the original DCF analysis.
+\end{document}

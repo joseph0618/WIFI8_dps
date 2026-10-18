@@ -1,0 +1,127 @@
+{
+  "arguments": {
+    "duration": 10,
+    "runs": 3,
+    "stations": [
+      5,
+      20,
+      50
+    ],
+    "output": "results/dps_validation"
+  },
+  "traffic": "saturated",
+  "max_stage": 5,
+  "lc_power": {
+    "idle_w": 0.1,
+    "rx_w": 0.2,
+    "tx_w": 0.5
+  },
+  "hc_power": {
+    "idle_w": 0.3,
+    "rx_w": 0.5,
+    "tx_w": 1.0,
+    "switch_w": 0.4
+  },
+  "scenarios": [
+    {
+      "name": "baseline",
+      "W": 32,
+      "timing": {
+        "ebsr_bits": 288,
+        "icf_bits": 288,
+        "icr_bits": 240,
+        "data_rate_mbps": 1.0,
+        "control_rate_mbps": 1.0,
+        "hc_rate_mbps": 10.0,
+        "switch_up_us": 100.0,
+        "switch_down_us": 100.0
+      }
+    },
+    {
+      "name": "cw16",
+      "W": 16,
+      "timing": {
+        "ebsr_bits": 288,
+        "icf_bits": 288,
+        "icr_bits": 240,
+        "data_rate_mbps": 1.0,
+        "control_rate_mbps": 1.0,
+        "hc_rate_mbps": 10.0,
+        "switch_up_us": 100.0,
+        "switch_down_us": 100.0
+      }
+    },
+    {
+      "name": "cw64",
+      "W": 64,
+      "timing": {
+        "ebsr_bits": 288,
+        "icf_bits": 288,
+        "icr_bits": 240,
+        "data_rate_mbps": 1.0,
+        "control_rate_mbps": 1.0,
+        "hc_rate_mbps": 10.0,
+        "switch_up_us": 100.0,
+        "switch_down_us": 100.0
+      }
+    },
+    {
+      "name": "hc_rate5",
+      "W": 32,
+      "timing": {
+        "ebsr_bits": 288,
+        "icf_bits": 288,
+        "icr_bits": 240,
+        "data_rate_mbps": 1.0,
+        "control_rate_mbps": 1.0,
+        "hc_rate_mbps": 5,
+        "switch_up_us": 100.0,
+        "switch_down_us": 100.0
+      }
+    },
+    {
+      "name": "long_switch",
+      "W": 32,
+      "timing": {
+        "ebsr_bits": 288,
+        "icf_bits": 288,
+        "icr_bits": 240,
+        "data_rate_mbps": 1.0,
+        "control_rate_mbps": 1.0,
+        "hc_rate_mbps": 10.0,
+        "switch_up_us": 1000,
+        "switch_down_us": 1000
+      }
+    }
+  ],
+  "source_sha256": {
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\validate_dps.py": "68ef6812ed8cce76213f04b3f0fa1a3122fdec22243989eb3574efb15097bd5a",
+    "src\\dps_sim\\analytical.py": "5724a29ae710ba15dd245850676795848b384c4e4dd25dba725a08515a5634c1",
+    "src\\dps_sim\\bianchi.py": "f6ab24a836cb132f3961f15c9c3b368fceeeb6e72d6602bbaaa5cac8bc5f92c6",
+    "src\\dps_sim\\dps.py": "5fe2175e5881de19177d20e7ffbcb4375793beb208498b8d6726fd4caf15c537",
+    "src\\dps_sim\\simulation.py": "f24fa9235a8a0e24b9fe08c838d3bc26b529fa8ab0bd17ccd6fe16736ff90992",
+    "src\\dps_sim\\__init__.py": "8ee7195fe529b29a2ea42abe70765204ec29fdb265fc144f7b4396da4a314deb"
+  },
+  "note": "Analytical predictions use only parameters, never simulated collision or occupancy statistics.",
+  "convergence": {
+    "n": 50,
+    "durations_s": [
+      10,
+      30,
+      100
+    ],
+    "runs": 3,
+    "timing": {
+      "ebsr_bits": 288,
+      "icf_bits": 288,
+      "icr_bits": 240,
+      "data_rate_mbps": 1.0,
+      "control_rate_mbps": 1.0,
+      "hc_rate_mbps": 10.0,
+      "switch_up_us": 100.0,
+      "switch_down_us": 100.0
+    },
+    "W": 32,
+    "m": 5
+  }
+}
