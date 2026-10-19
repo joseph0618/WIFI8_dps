@@ -1,0 +1,44 @@
+{
+  "arguments": {
+    "duration": 10,
+    "runs": 3,
+    "stations": [
+      5,
+      20,
+      50
+    ],
+    "thresholds": [
+      0,
+      256,
+      512,
+      1024,
+      1500
+    ],
+    "payload_size_range_bytes": [
+      64,
+      1500
+    ],
+    "arrival_rate": 5,
+    "output": "results/size_threshold_comparison/threshold_sensitivity"
+  },
+  "timing": {
+    "ebsr_bits": 288,
+    "icf_bits": 288,
+    "icr_bits": 240,
+    "data_rate_mbps": 1.0,
+    "control_rate_mbps": 1.0,
+    "hc_rate_mbps": 10.0,
+    "switch_up_us": 100.0,
+    "switch_down_us": 100.0
+  },
+  "payload_probability_per_byte_size": 0.0006958942240779402,
+  "note": "Uniform integer payload range, not a universal ns-3 distribution. Strict payload > threshold rule; identical per-STA arrival/size streams across policies.",
+  "source_sha256": {
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\run_size_sweep.py": "3011be249768b04324e1f8a08fc5e34c9333e4879d704f8fe068767c808d676b",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\analytical.py": "5724a29ae710ba15dd245850676795848b384c4e4dd25dba725a08515a5634c1",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\bianchi.py": "f6ab24a836cb132f3961f15c9c3b368fceeeb6e72d6602bbaaa5cac8bc5f92c6",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\dps.py": "5fe2175e5881de19177d20e7ffbcb4375793beb208498b8d6726fd4caf15c537",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\simulation.py": "64c28bf33a66203949537831d5418e7a64e7ea91159362315a4d988c63ee9d91",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\__init__.py": "8ee7195fe529b29a2ea42abe70765204ec29fdb265fc144f7b4396da4a314deb"
+  }
+}

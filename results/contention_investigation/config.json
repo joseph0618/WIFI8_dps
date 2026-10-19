@@ -1,0 +1,46 @@
+{
+  "arguments": {
+    "duration": 60,
+    "warmup": 5,
+    "runs": 3,
+    "stations": [
+      5,
+      20,
+      50
+    ],
+    "bin_seconds": 0.25,
+    "output": "results/contention_investigation"
+  },
+  "traffic": "saturated",
+  "W": 32,
+  "m": 5,
+  "timing": {
+    "ebsr_bits": 288,
+    "icf_bits": 288,
+    "icr_bits": 240,
+    "data_rate_mbps": 1.0,
+    "control_rate_mbps": 1.0,
+    "hc_rate_mbps": 10.0,
+    "switch_up_us": 100.0,
+    "switch_down_us": 100.0
+  },
+  "workloads": {
+    "fixed": "8184 payload bits; every packet uses DPS",
+    "uniform": "integer uniform [64,1500] bytes; DPS threshold >512 bytes"
+  },
+  "notes": "Optional observer only; no random draws or policy changes. Ratios use attempt denominators. Late windows are warm-up-excluded estimates, not a proof of stationarity.",
+  "source_sha256": {
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\investigate_contention.py": "0b65f83f193747e13dd662ce4aa69c2ec129503001e1053d0c1d3bf6d07ee102",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\analytical.py": "d8935de24d83fbff61a66ef8f6259f7d5ed9050ea1bc068460b606c7ef1540a1",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\bianchi.py": "f6ab24a836cb132f3961f15c9c3b368fceeeb6e72d6602bbaaa5cac8bc5f92c6",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\diagnostics.py": "552d53a0d8a9c84e9e31249e4bb0693d06a29820cc7ec18554d7d5ab20e91d69",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\dps.py": "5fe2175e5881de19177d20e7ffbcb4375793beb208498b8d6726fd4caf15c537",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\simulation.py": "7e07b82df6fe36dcc8a8c134fb6d67028049912ee0ec4d69876ffd5372eb447e",
+    "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\src\\dps_sim\\__init__.py": "8ee7195fe529b29a2ea42abe70765204ec29fdb265fc144f7b4396da4a314deb"
+  },
+  "postprocessing": {
+    "script": "C:\\Users\\User\\OneDrive\\Desktop\\\u9b4f\u5b8f\u5b87\\summarize_contention.py",
+    "sha256": "8e76836d985ac48cb00a24559bec069d6d18124e8c439c0d0a906c936f9c0970",
+    "note": "Pooled count tables added from existing CSVs, without rerunning or modifying simulation data."
+  }
+}

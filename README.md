@@ -39,3 +39,35 @@ Models: `bianchi` is LC DCF, `dps` is LC contention with HC UL service, and `bia
 - `results/lc_hc_comparison/` and `results/dps_validation/`: regenerated current experiments; exact settings are in each config.json.
 
 Existing outputs are overwritten in the chosen output directory. Use a separate directory to retain another experiment.
+## Variable-size, size-triggered DPS experiment
+
+This separate experiment retains model labels `bianchi` (LC DCF), `dps` (size-triggered DPS), and `bianchi_hc` (HC DCF). A head-of-line payload **strictly greater than** the threshold sends EBSR, then waits for the AP's separate contention win and HC exchange. Smaller/equal packets contend for direct LC DATA/ACK. The threshold applies to individual payload bytes, not queue length, aggregate buffered bytes, or application-object size.
+
+```powershell
+py -B run.py --experiment size-threshold --model all --traffic both --duration 10 --runs 3
+# Custom mixture and threshold:
+py -B run.py --experiment size-threshold --payload-size-range-bytes 64 1500 --dps-threshold-bytes 512 --output results/my_size_experiment
+# Threshold sensitivity, including always-DPS (0) and all-LC (1500) endpoints:
+py -B run_size_sweep.py
+py -B tests/check_size_threshold.py
+```
+
+Default results go to `results/size_threshold_comparison/`; the original comparison and analytical-validation outputs are retained. The output set matches `lc_hc_comparison` and adds `size_metrics.png`. `threshold_sensitivity/` contains a five-threshold sweep at N=5/20/50 with CSVs, plots, configuration and report.
+
+The default payload size is **integer-uniform from 64 through 1500 bytes, inclusive**: each of the 1437 sizes has probability 1/1437. The mean is 782 bytes, and the default DPS threshold is 512 bytes. This is a controlled synthetic workload, not a measured Internet packet distribution or an ns-3 default. ns-3's [OnOff application](https://www.nsnam.org/doxygen/db/d5c/classns3_1_1_on_off_application.html) uses a configurable fixed packet size; its [application-specific models](https://www.nsnam.org/docs/models/html/applications.html) use different generators. Video-frame/object sizes must not be confused with individual packet payload sizes after segmentation. No standard DPS threshold or universally optimal threshold is claimed here.
+
+Every model uses the same per-STA packet-size sequence for a given seed. Variable-size Poisson arrivals also use shared per-STA arrival streams; dropped packets still consume their size draw. Saturated policies may deliver different prefixes, and Poisson policies can drop different packets. Throughput sums actual delivered payload bits. Alongside packet PRR, outputs include byte PRR, payload-bit conservation totals, per-size generated/delivered counts for explicit size-list workloads, mean delivered size, and energy per delivered Mbit. Fixed-payload analytical predictions do not validate the mixed threshold policy.
+
+For mixed DPS, the EBSR-to-HC-UL mean is divided by completed **DPS grants**, excluding direct LC deliveries. Raw counters separate direct and DPS deliveries. Collision duration follows the longest colliding frame, with each sender's actual airtime accounted for in energy. The abstraction still excludes aggregation, PHY errors, TCP/IP headers/behavior, and realistic application burst correlations.
+
+## Saturated contention investigation
+
+```powershell
+py -B tests/check_diagnostics.py
+py -B investigate_contention.py
+py -B summarize_contention.py
+```
+
+The optional observer does not change random streams or access rules. Results go to `results/contention_investigation/`: fixed and uniform-payload comparisons, quarter-second collision windows, cumulative and warm-up-excluded collision ratios, report-state occupancy, equal-event LC/HC checks, contention/frame shares, and exact FIFO waiting-interval decomposition. The default is 54 saturated runs of 60 seconds, with three seeds at N=5/20/50 and a 5-second warm-up cutoff. Existing comparison outputs are retained.
+
+`predict_dps_transient()` adds an event-index transient of the fixed-payload k-only closure, starting at k=0. It does not model retained backoff memory exactly or predict the uniform threshold-policy transient. See the expanded Markdown/LaTeX derivations and the investigation report for denominators and limits.

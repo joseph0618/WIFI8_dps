@@ -1,0 +1,30 @@
+{
+  "fixed": {
+    "EBSR": {
+      "attempt_share": 0.5130765654861315,
+      "collision_ratio": 0.09964765100671141
+    },
+    "ICF": {
+      "attempt_share": 0.48692343451386855,
+      "collision_ratio": 0.05388776917365015
+    },
+    "DATA": {
+      "attempt_share": 0.0,
+      "collision_ratio": null
+    }
+  },
+  "uniform": {
+    "EBSR": {
+      "attempt_share": 0.4167319631125309,
+      "collision_ratio": 0.12322823257159386
+    },
+    "ICF": {
+      "attempt_share": 0.3951841359773371,
+      "collision_ratio": 0.07910724726098782
+    },
+    "DATA": {
+      "attempt_share": 0.188083900910132,
+      "collision_ratio": 0.12487315067029857
+    }
+  }
+}

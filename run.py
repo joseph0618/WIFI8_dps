@@ -39,11 +39,43 @@ def main():
     for name, default in [('lc-idle-w', .1), ('lc-rx-w', .2), ('lc-tx-w', .5),
                           ('hc-idle-w', .3), ('hc-rx-w', .5), ('hc-tx-w', 1.), ('switch-w', .4)]:
         parser.add_argument('--'+name, type=float, default=default)
-    parser.add_argument("--output", default="results")
+    parser.add_argument('--experiment', choices=['fixed', 'size-threshold'], default='fixed',
+                        help='Keep original fixed-payload DPS or run variable-size threshold DPS')
+    parser.add_argument('--payload-sizes-bytes', type=int, nargs='+', default=None,
+                        help='Uniform discrete payload sizes for size-threshold experiment')
+    parser.add_argument('--payload-size-range-bytes', type=int, nargs=2, metavar=('MIN', 'MAX'), default=None,
+                        help='Inclusive uniform integer payload range; default 64 1500 in size-threshold experiment')
+    parser.add_argument('--dps-threshold-bytes', type=int, default=512,
+                        help='DPS triggers only when head payload size is strictly above this value')
+    parser.add_argument("--output", default=None)
     args = parser.parse_args()
     if args.runs < 1:
         parser.error('--runs must be at least 1')
+    size_experiment = args.experiment == 'size-threshold'
+    if args.dps_threshold_bytes < 0:
+        parser.error('--dps-threshold-bytes must be nonnegative')
+    if size_experiment:
+        if args.payload_sizes_bytes is not None and args.payload_size_range_bytes is not None:
+            parser.error('Choose a discrete size list or uniform range, not both')
+        if args.payload_sizes_bytes is not None:
+            if min(args.payload_sizes_bytes) <= 0:
+                parser.error('--payload-sizes-bytes must be positive')
+            payload_description = f'Uniform discrete payload sizes: {args.payload_sizes_bytes} bytes.'
+        else:
+            args.payload_size_range_bytes = args.payload_size_range_bytes or [64, 1500]
+            low, high = args.payload_size_range_bytes
+            if low <= 0 or low > high:
+                parser.error('Payload range must satisfy 0 < MIN <= MAX')
+            payload_description = f'Uniform integer payload sizes from {low} through {high} bytes, inclusive; each byte size has probability 1/{high-low+1}.' 
+        if args.access != 'basic':
+            parser.error('size-threshold comparison uses basic access for both Bianchi baselines')
+    elif args.payload_sizes_bytes is not None or args.payload_size_range_bytes is not None:
+        parser.error('--payload-sizes-bytes requires --experiment size-threshold')
+    args.output = args.output or ('results/size_threshold_comparison' if size_experiment else 'results')
     output = Path(args.output)
+    if size_experiment and output.resolve() in {
+            Path('results/lc_hc_comparison').resolve(), Path('results/dps_validation').resolve()}:
+        parser.error('Choose a separate output directory for size-threshold experiments')
     output.mkdir(parents=True, exist_ok=True)
     timing = ULTiming(data_rate_mbps=args.lc_rate, control_rate_mbps=args.control_rate,
                       hc_rate_mbps=args.hc_rate, switch_up_us=args.switch_up_us,
@@ -55,6 +87,13 @@ def main():
         parser.error('bianchi_hc currently supports basic access only')
     metadata = dict(created_utc=datetime.now(timezone.utc).isoformat(), arguments=vars(args),
                     timing=asdict(timing), lc_power=asdict(power), hc_power=asdict(hc_power),
+                    payload_probabilities=([1/len(args.payload_sizes_bytes)]*len(args.payload_sizes_bytes) if args.payload_sizes_bytes else None),
+                    packet_size_policy=(payload_description if size_experiment
+                                        else 'fixed 8184 payload bits'),
+                    dps_policy=('payload bytes > threshold: EBSR and AP grant; otherwise direct LC DATA/ACK' if size_experiment
+                                else 'every packet uses EBSR and AP grant'),
+                    workload_pairing='independent contention/arrival/size RNGs; per-STA size streams shared across models',
+                    realism='illustrative synthetic workload, not a measured or standard-mandated policy',
                     error_bars='one standard error across seeds; no confidence interval',
                     source_sha256={str(p.relative_to(Path(__file__).parent)): hashlib.sha256(p.read_bytes()).hexdigest()
                                    for p in [Path(__file__), *Path(__file__).parent.glob('src/dps_sim/*.py')]})
@@ -72,11 +111,14 @@ def main():
             for n in args.stations:
                 runs = []
                 for seed in range(args.seed, args.seed + args.runs):
-                    engine_mode = dict(bianchi=args.access, dps='ul_dps', bianchi_hc='basic_hc')[mode]
+                    engine_mode = dict(bianchi=args.access, dps='ul_dps_threshold' if size_experiment else 'ul_dps', bianchi_hc='basic_hc')[mode]
                     result = simulate_traffic(mode=engine_mode, traffic=traffic, n=n,
                         duration_s=args.duration, arrival_rate_pps=args.arrival_rate,
                         queue_limit=args.queue_limit, W=args.window, m=args.max_stage,
-                        seed=seed, timing=timing, power=power, hc_power=hc_power)
+                        seed=seed, timing=timing, power=power, hc_power=hc_power,
+                        payload_sizes_bytes=args.payload_sizes_bytes,
+                        payload_size_range_bytes=args.payload_size_range_bytes,
+                        dps_threshold_bytes=args.dps_threshold_bytes)
                     runs.append(result)
                     rows.append(dict(traffic=traffic, model=mode, access=engine_mode, stations=n,
                         arrival_rate_pps=args.arrival_rate, lc_rate_mbps=args.lc_rate,
@@ -101,7 +143,8 @@ def main():
             print(f"Finished {mode}: {traffic}", flush=True)
     axes[1, 0].set_ylim(0, 1.05)
     axes[0, 0].legend(fontsize=8)
-    fig.suptitle(f"UL access and LC/HC research model — {args.duration:g} s; Poisson {args.arrival_rate:g} packets/s/STA")
+    experiment_title = (f"Size-triggered DPS (> {args.dps_threshold_bytes} B)" if size_experiment else "UL access and LC/HC research model")
+    fig.suptitle(f"{experiment_title} — {args.duration:g} s; Poisson {args.arrival_rate:g} packets/s/STA")
     fig.tight_layout()
     fig.savefig(output / "traffic_metrics.png", dpi=180)
     plt.close(fig)
@@ -134,7 +177,7 @@ def main():
     energy_metrics = [('mean_sta_power_w', 'Mean STA power (W)'),
                       ('energy_per_delivered_packet_mj', 'STA energy / delivered packet (mJ)'),
                       ('p95_delay_ms', 'Delivered delay p95 (ms)'),
-                      ('jain_fairness', 'Jain throughput fairness')]
+                      ('jain_fairness', 'Jain packet-delivery fairness')]
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     for traffic in sorted(set(r['traffic'] for r in summary)):
         for model in models:
@@ -169,7 +212,7 @@ def main():
             for baseline, candidate in [('bianchi','dps'), ('bianchi_hc','dps')]:
                 left = {r['seed']:r for r in rows if r['traffic']==traffic and r['stations']==n and r['model']==baseline}
                 right = {r['seed']:r for r in rows if r['traffic']==traffic and r['stations']==n and r['model']==candidate}
-                for metric in ('throughput_mbps','mean_delay_ms','mean_sta_power_w','energy_per_delivered_packet_mj','prr'):
+                for metric in ('throughput_mbps','mean_delay_ms','mean_sta_power_w','energy_per_delivered_packet_mj','prr','byte_prr','energy_per_delivered_mbit_j'):
                     pairs = [(left[k][metric],right[k][metric]) for k in left.keys() & right.keys()
                              if math.isfinite(left[k][metric]) and math.isfinite(right[k][metric])]
                     if not pairs: continue
@@ -190,6 +233,44 @@ def main():
               '|---|---|---:|---:|---:|---:|---:|---:|']
     for r in summary:
         report.append(f"| {r['traffic']} | {r['model']} | {r['stations']} | {r['throughput_mbps']:.4f} | {r['mean_delay_ms']:.3f} | {r['prr']:.4f} | {r['mean_sta_power_w']:.4f} | {r['energy_per_delivered_packet_mj']:.3f} |")
+    if size_experiment:
+        report[2:2] = [
+            payload_description + ' Independent draw per generated packet.',
+            f'DPS rule: head payload > {args.dps_threshold_bytes} bytes uses EBSR then AP ICF/ICR/DATA/ACK on HC; smaller/equal payloads use direct LC DATA/ACK.',
+            'Models remain named bianchi (LC), dps (size-triggered), and bianchi_hc (HC).',
+            'This is a synthetic size-based policy, not a validated claim of real deployment behavior.',
+            'ns-3 has application-dependent traffic: [OnOff uses a configurable fixed packet size](https://www.nsnam.org/doxygen/db/d5c/classns3_1_1_on_off_application.html); [application-specific generators differ](https://www.nsnam.org/docs/models/html/applications.html). This uniform workload is not an ns-3 default.',
+            'Jain fairness uses delivered packet counts per STA; it is not byte-throughput fairness when payload sizes vary.',
+            'Size/arrival random streams are shared across models by seed. Saturated models deliver different prefixes; Poisson queue overflow may retain different packets.',
+            'Throughput uses actual delivered payload bits. EBSR-to-HC-UL mean uses only completed DPS grants, excluding direct LC deliveries.',
+            'Packet PRR and mean delay may hide packet-size selection effects; byte PRR and energy/Mbit are provided below.', '']
+        report += ['', '## Size and route statistics', '',
+                   '| Traffic | Model | STAs | Mean delivered bytes | Byte PRR | DPS delivery fraction | J/Mbit |',
+                   '|---|---|---:|---:|---:|---:|---:|']
+        for r in summary:
+            report.append(f"| {r['traffic']} | {r['model']} | {r['stations']} | {r['mean_delivered_payload_bytes']:.2f} | {r['byte_prr']:.4f} | {r['dps_delivery_fraction']:.4f} | {r['energy_per_delivered_mbit_j']:.4f} |")
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        size_metrics = [('mean_delivered_payload_bytes', 'Mean delivered payload (bytes)'),
+                        ('byte_prr', 'Byte PRR (delivered / generated bits)'),
+                        ('dps_delivery_fraction', 'Fraction of deliveries using DPS grant'),
+                        ('energy_per_delivered_mbit_j', 'All-STA energy / delivered Mbit (J)')]
+        for traffic in sorted(set(r['traffic'] for r in summary)):
+            for model in models:
+                group = [r for r in summary if r['traffic'] == traffic and r['model'] == model]
+                for ax, (metric, label) in zip(axes.flat, size_metrics):
+                    ax.errorbar([r['stations'] for r in group], [r[metric] for r in group],
+                                yerr=[r[metric+'_se'] for r in group] if args.runs > 1 else None,
+                                marker='o', linestyle='-' if traffic == 'saturated' else '--',
+                                label=f'{model}: {traffic}')
+                    ax.set(xlabel='Number of STAs', ylabel=label)
+                    ax.grid(alpha=.3)
+        axes[0,0].legend(fontsize=7)
+        axes[0,1].set_ylim(0,1.05)
+        axes[1,0].set_ylim(0,1.05)
+        fig.suptitle(experiment_title)
+        fig.tight_layout()
+        fig.savefig(output/'size_metrics.png', dpi=180)
+        plt.close(fig)
     (output/'REPORT.md').write_text('\n'.join(report)+'\n',encoding='utf-8')
     print(f"Saved plots, raw data, summaries, paired comparisons and configuration in {output}")
 

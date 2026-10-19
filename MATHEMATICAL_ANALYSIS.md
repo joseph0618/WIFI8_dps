@@ -218,3 +218,97 @@ Five scenarios, three station counts, and three seeds give 45 default runs, plus
 The prediction is stationary, while simulation starts with no pending reports. Retained counter/stage history and initial transients can affect agreement. Close throughput agreement does not prove accurate collision dynamics. Poisson delay/PRR, tagged-report counts, analytical state occupancy, and PHY correctness are outside this validation.
 
 The DCF fixed point follows the Bianchi decoupling approach (2000, DOI 10.1109/49.840210). The DPS state reduction and reward construction are this project's approximation.
+
+## 11. Why saturated LC and HC DCF can have the same collision ratio
+
+In both Bianchi baselines every saturated STA remains eligible. Their \(N,W,m\), counter-freezing rules, and contention random-number stream are identical. Therefore the sender sets at the same contention-event index are identical; changing the PHY rate changes the time spent on each event, not the sequence of backoff decisions.
+
+For homogeneous DCF the conditional collision fixed point is
+
+\[
+p=1-(1-\tau)^{N-1}.
+\]
+
+The PHY rate is absent from this expression. It enters holding times, so HC can have more attempts and even more collision events per second while having the same collision ratio per attempt. Fixed-duration empirical ratios may differ because the two models observe different-length prefixes of the event sequence. The equality is specific to the saturated access assumptions; Poisson queues, errors, contention-window adaptation, or other MAC changes can break it.
+
+DPS has \(M_k=N-k+\mathbf1_{\{k>0\}}\) active contenders rather than \(N\) always-active STAs. Reported STAs have withdrawn. Consequently there is no general reason for HC DCF's collision ratio to be smaller than DPS's.
+
+## 12. Variable collision probabilities and transient analysis
+
+The scalar stationary collision ratio does not imply that individual windows have constant collision statistics. In a more general time-dependent decoupling, eligible contender \(i\) has attempt probability \(\tau_i(j)\) at virtual-event index \(j\), giving
+
+\[
+p_i(j)=1-\prod_{\ell\ne i}(1-\tau_\ell(j)),\qquad
+\rho(j)=\frac{\sum_i\tau_i(j)p_i(j)}{\sum_i\tau_i(j)}.
+\]
+
+This assumes independent attempts; retained backoff states and eligibility correlations make it an approximation. A complete transient model would include counters, retry stages, report membership and FIFO order in the state.
+
+The implemented reduced transient uses the existing event transition matrix \(Q\). Starting with no reported STAs,
+
+\[
+\alpha_0=(1,0,\ldots,0),\qquad \alpha_{j+1}=\alpha_jQ.
+\]
+
+With the same \(A_k,C_k\) as before,
+
+\[
+a_j=\sum_k\alpha_j(k)A_k,\quad c_j=\sum_k\alpha_j(k)C_k,
+\quad \rho_j=\frac{c_j}{a_j},\quad
+\rho_{[0,J)}=\frac{\sum_{j=0}^{J-1}c_j}{\sum_{j=0}^{J-1}a_j}.
+\]
+
+These are ratios of expected counts, not expectations of a noisy sample-path ratio. In particular, averaging instantaneous ratios without their attempt weights generally gives a different answer.
+
+The expected elapsed time after \(J\) virtual events is
+
+\[
+\mathbb E[T_J]=\gamma\sum_{j=0}^{J-1}\sum_k\alpha_j(k)t_k.
+\]
+
+Plotting against this expected time does not produce an exact physical-time transient: actual event durations and state trajectories are random. A time-domain prediction requires the full Markov-renewal holding-time treatment.
+
+For this finite irreducible chain with self-loops, \(\alpha_j\) converges to \(\pi\), hence \(\rho_j\) converges to the stationary attempt-weighted ratio. Transient departures can decay; this is not mathematical divergence. Sample-window ratios can wiggle because of startup, retained backoff, and sampling noise. Sustained oscillation or failure to settle must be demonstrated rather than imposed. The investigation records the reduced chain's eigenvalues and compares window, cumulative, and warm-up-excluded empirical ratios.
+
+`predict_dps_transient()` implements this **event-index local-equilibrium approximation for fixed-payload always-DPS**. It is not a new analytical model of the mixed threshold policy, and its local equilibrium does not capture the initial uniform-counter ensemble exactly.
+
+## 13. Exact decomposition of EBSR-to-trigger waiting attempts
+
+For completed pair \(j\), define \(q_j\) as the number of reports already ahead in the AP FIFO when its EBSR succeeds. Exactly those \(q_j\) grants must finish before its own grant. Let \(E_j\) count intervening successful EBSRs, \(D_j\) intervening direct DATA successes, and \(C_{E,j},C_{F,j},C_{D,j}\) the numbers of collided EBSR, ICF, and direct-DATA attempts. Then, for the current basic-access experiments,
+
+\[
+\boxed{I_j=q_j+E_j+D_j+C_{E,j}+C_{F,j}+C_{D,j}.}
+\]
+
+The identity counts each collided sender separately and excludes the tagged EBSR and tagged successful ICF. In always-DPS, \(D_j=C_{D,j}=0\). It is a network-wide waiting count; it is not the tagged STA's retry count. The tagged STA does not contend while waiting.
+
+For each of the \(q_j\) intervening grants there is one successful ICF, one protected ICR, one HC DATA and one ACK. Therefore ICR contributes **zero contention attempts**, despite appearing as a transmitted frame. In mixed DPS, direct LC deliveries add DATA/ACK pairs. Contention-attempt share, transmitted-frame share, and channel-airtime share have different denominators and must be reported separately.
+
+In a heavily backlogged always-DPS case, new reports approximately replenish served reports, so \(E_j\) can be close to \(q_j\). A rough explanatory scale is \(I_j\approx2q_j\) plus collided attempts. This is a heuristic, not a tagged-process prediction. A value around 100 for 50 STAs can therefore reflect FIFO waiting for many other stations rather than 100 failures by one station.
+
+Run `py -B investigate_contention.py` for paired LC/HC event-sequence checks, per-kind attempt/frame ratios, FIFO decomposition, measured report-state occupancy, and collision-transient plots. Outputs are saved in [the investigation folder](results/contention_investigation/REPORT.md). Completed-pair censoring and finite-window effects remain explicit in its report.
+
+## 14. AP/STA role asymmetry: what a richer model must retain
+
+The measured per-kind collision ratios are not identical. With 50 STAs in the fixed-payload experiment, EBSR attempts collided about 9.96% of the time versus 5.39% for ICF attempts (full-window pooled counts). The current homogeneous local closure cannot resolve that role difference.
+
+One possible extension assigns \(\tau_S(k,j)\) to eligible STAs and \(\tau_A(k,j)\) to the AP, with \(b_k=\mathbf1_{\{k>0\}}\). Under an independent-role approximation,
+
+\[
+\begin{aligned}
+P_0(k,j)&=(1-\tau_S)^{n_k}(1-\tau_A)^{b_k},\\
+P_E(k,j)&=n_k\tau_S(1-\tau_S)^{n_k-1}(1-\tau_A)^{b_k},\\
+P_A(k,j)&=b_k\tau_A(1-\tau_S)^{n_k},\\
+p_S(k,j)&=1-(1-\tau_S)^{n_k-1}(1-\tau_A)^{b_k},\\
+p_A(k,j)&=1-(1-\tau_S)^{n_k}.
+\end{aligned}
+\]
+
+Use the STA expressions only when \(n_k>0\), with \(P_E=0\) otherwise; the AP conditional expression applies only when it is active. Expected attempt and collided-attempt counts become
+
+\[
+A(k,j)=n_k\tau_S+b_k\tau_A,\qquad
+C(k,j)=n_k\tau_Sp_S+b_k\tau_Ap_A.
+\]
+
+Deriving the two attempt processes requires tracking their counter/stage histories and activation/deactivation, not just fitting the two observed collision percentages. These equations describe a proposed extension, **not an implemented or validated replacement** for the current transient closure. Even the homogeneous simulator can produce aggregate role differences through state/history selection; measured unconditional role ratios alone do not identify a state-conditional mechanism.

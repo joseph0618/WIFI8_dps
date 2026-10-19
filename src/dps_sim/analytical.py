@@ -74,3 +74,39 @@ def predict_dps(n=10, W=32, m=5, timing=None, power=None, hc_power=None):
                 mean_reported_stas=sum(s['k']*s['time_probability'] for s in states),
                 ebsr_service_balance=avg('pe')-service,
                 states=states)
+
+
+def predict_dps_transient(n=10, W=32, m=5, steps=10000, sample_every=20, timing=None):
+    """Evolve the k-only closure from no pending reports in virtual-event index.
+
+    This is not an exact wall-clock transient or a retained-backoff model.
+    expected_elapsed_s sums expected holding times; it is not a deterministic
+    map between event index and physical time for individual sample paths.
+    """
+    if steps < 0 or sample_every < 1:
+        raise ValueError('Nonnegative steps and positive sample interval required')
+    prediction = predict_dps(n=n, W=W, m=m, timing=timing)
+    states = prediction['states']
+    alpha = [1.] + [0.]*n
+    cumulative_attempts = cumulative_collided = elapsed = 0.
+    rows = []
+    for step in range(steps+1):
+        attempts = sum(a*s['attempts'] for a,s in zip(alpha,states))
+        collided = sum(a*max(0.,s['collided_attempts']) for a,s in zip(alpha,states))
+        if step % sample_every == 0 or step == steps:
+            rows.append(dict(event_index=step, expected_elapsed_s=elapsed/1e6,
+                expected_reported_stas=sum(k*a for k,a in enumerate(alpha)),
+                instantaneous_collision_ratio=collided/attempts,
+                cumulative_collision_ratio=cumulative_collided/cumulative_attempts if cumulative_attempts else math.nan,
+                stationary_collision_ratio=prediction['collision_ratio']))
+        if step == steps: break
+        cumulative_attempts += attempts
+        cumulative_collided += collided
+        elapsed += sum(a*s['duration_us'] for a,s in zip(alpha,states))
+        next_alpha = [0.]*(n+1)
+        for k,(a,s) in enumerate(zip(alpha,states)):
+            next_alpha[k] += a*(s['p0']+s['pc'])
+            if k < n: next_alpha[k+1] += a*s['pe']
+            if k > 0: next_alpha[k-1] += a*s['pa']
+        alpha = next_alpha
+    return rows

@@ -1,4 +1,4 @@
-﻿\documentclass[11pt,a4paper]{article}
+\documentclass[11pt,a4paper]{article}
 \usepackage[margin=25mm]{geometry}
 \usepackage{amsmath,amssymb,booktabs,longtable}
 \usepackage[T1]{fontenc}
@@ -403,4 +403,138 @@ The DCF fixed-point closure follows the Bianchi decoupling approach
 (2000, DOI \texttt{10.1109/49.840210}). The DPS state reduction, holding times,
 and reward construction here are this project's approximation, not results
 claimed from the original DCF analysis.
+
+\section{Saturated LC/HC invariance and variable collision probabilities}
+For saturated DCF, every STA remains eligible and the fixed point is
+\begin{equation}
+p=1-(1-\tau)^{N-1}.
+\end{equation}
+PHY rate affects event duration, not the attempt probability closure.
+With identical contention seeds and access rules, LC and HC have identical
+sender/collision sequences at equal contention-event index. Fixed-duration
+observations include different numbers of events. HC can therefore have
+more collisions per second without a larger per-attempt collision ratio.
+This invariance need not hold with nonsaturated queues, errors, or adaptive
+MAC parameters. DPS withdraws reported STAs and replaces their competition
+by a single active AP; HC DCF need not have a lower collision ratio than DPS.
+
+\subsection{General time-dependent decoupling}
+Let $\tau_i(j)$ denote an eligible contender's attempt probability at event
+index $j$. With independent but potentially heterogeneous attempts,
+\begin{equation}
+p_i(j)=1-\prod_{\ell\ne i}(1-\tau_\ell(j)),\qquad
+\rho(j)=\frac{\sum_i\tau_i(j)p_i(j)}{\sum_i\tau_i(j)}.
+\end{equation}
+Eligibility correlations, counters and retry-stage memory complicate this
+factorization. An exact transient state would retain these variables and
+FIFO order, rather than only the number of reported STAs.
+
+\subsection{Transient extension of the reduced chain}
+The implemented extension keeps the same local equilibrium probabilities
+but evolves the initial report-state distribution:
+\begin{equation}
+\alpha_0=(1,0,\ldots,0),\qquad \alpha_{j+1}=\alpha_jQ.
+\end{equation}
+Define expected counts per event
+\begin{equation}
+a_j=\sum_k\alpha_j(k)A_k,\qquad
+c_j=\sum_k\alpha_j(k)C_k.
+\end{equation}
+The instantaneous and cumulative ratios of expected counts are
+\begin{equation}
+\rho_j=\frac{c_j}{a_j},\qquad
+\rho_{[0,J)}=\frac{\sum_{j=0}^{J-1}c_j}{\sum_{j=0}^{J-1}a_j}.
+\end{equation}
+These are not expectations of a random sample-path ratio. Equivalently,
+$\rho_{[0,J)}$ averages $\rho_j$ with weights $a_j$, rather than equally.
+Expected elapsed seconds are
+\begin{equation}
+\mathbb E[T_J]=\gamma\sum_{j=0}^{J-1}\sum_k\alpha_j(k)t_k.
+\end{equation}
+This mean time does not give an exact deterministic mapping between event
+index and physical time. A true wall-clock transient requires the joint
+state/holding-time Markov-renewal treatment.
+
+The finite irreducible chain has self-loops and is aperiodic, so
+$\alpha_j\to\pi$ and $\rho_j\to\rho$. A transient departure can decay;
+this is not mathematical divergence. Reversibility makes the transition
+spectrum real. Negative eigenvalues, if present, can yield alternating
+modes, but oscillation must not be presumed. The experiment records the
+spectrum for the actual parameters and examines measured window ratios,
+cumulative ratios and warm-up-excluded estimates. Finite sample fluctuations
+alone establish neither sustained oscillation nor convergence.
+
+\texttt{predict\_dps\_transient()} implements this fixed-payload always-DPS
+closure. It neither models the mixed threshold policy nor exactly captures
+startup counters freshly drawn uniformly in the simulator.
+
+\section{FIFO decomposition of a tagged report's waiting attempts}
+For a completed pair $j$, let $q_j$ be the number of reports ahead of it when
+EBSR succeeds. Let $E_j$ count other successful EBSRs and $D_j$ successful
+direct DATA contentions before its grant. Write $C_{E,j},C_{F,j},C_{D,j}$
+for collided EBSR, ICF and direct-DATA attempts, counting every sender.
+FIFO service yields the exact sample-path identity
+\begin{equation}
+\boxed{I_j=q_j+E_j+D_j+C_{E,j}+C_{F,j}+C_{D,j}}.
+\end{equation}
+Indeed, exactly $q_j$ older grants must precede the tagged grant, and each
+contributes one successful ICF. Every other intervening contention is one
+of the other terms. Endpoints are excluded. In always-DPS,
+$D_j=C_{D,j}=0$. The tagged STA has left contention, so these are not its
+own repeated retries.
+
+For these $q_j$ older grants, protected-frame counts satisfy
+\begin{equation}
+F_{\mathrm{ICF,success},j}=F_{\mathrm{ICR},j}
+=F_{\mathrm{DATA,HC},j}=q_j,\qquad
+F_{\mathrm{ACK},j}=q_j+D_j
+\end{equation}
+for basic-access mixed DPS. Each ICR is a transmitted frame but contributes
+zero separate contention attempts. Failed ICFs increase ICF attempts above
+successful ICR counts. Frame shares, contention shares, and airtime shares
+therefore require explicitly different denominators.
+
+When the always-DPS FIFO stays nearly full, newly served STAs can re-report
+and approximately replenish departed reports: $E_j\approx q_j$. This gives
+the explanatory scale $I_j\approx2q_j$ plus collided attempts. It is a
+heuristic, not a new analytic tagged-report prediction. Counts near 100 with
+50 STAs can be consistent with waiting behind many older reports.
+
+The script \texttt{investigate\_contention.py} checks the FIFO identity for
+every completed observed pair and exports per-kind decomposition, time-state
+occupancy, frame ratios, and collision transients under fixed and uniform
+payload workloads. Its optional observer consumes no random draws and does
+not modify access rules. Warm-up exclusion reduces startup contamination,
+but completed-pair horizon censoring and finite-sample uncertainty remain.
+
+
+\section{Role-dependent extension: scope beyond the current closure}
+Measured aggregate EBSR and ICF collision ratios differ. In the fixed-payload
+$N=50$ investigation they are about 9.96\% and 5.39\%, respectively, using
+full-window pooled attempts. The current homogeneous local closure does not
+resolve that role difference.
+
+A possible independent-role extension uses $\tau_S(k,j)$ for eligible STAs
+and $\tau_A(k,j)$ for the AP. With $b_k=\ind_{\{k>0\}}$,
+\begin{align}
+P_0(k,j)&=(1-\tau_S)^{n_k}(1-\tau_A)^{b_k},\\
+P_E(k,j)&=n_k\tau_S(1-\tau_S)^{n_k-1}(1-\tau_A)^{b_k},\\
+P_A(k,j)&=b_k\tau_A(1-\tau_S)^{n_k},\\
+p_S(k,j)&=1-(1-\tau_S)^{n_k-1}(1-\tau_A)^{b_k},\\
+p_A(k,j)&=1-(1-\tau_S)^{n_k}.
+\end{align}
+The STA equations apply when $n_k>0$; otherwise set $P_E=0$ and omit its
+conditional collision probability. The AP conditional expression applies
+only while it is active. Expected attempts and collided attempts are
+\begin{equation}
+A(k,j)=n_k\tau_S+b_k\tau_A,\qquad
+C(k,j)=n_k\tau_Sp_S+b_k\tau_Ap_A.
+\end{equation}
+Closing these equations requires counter/stage history and activation effects.
+This is a proposed extension, not an implemented or validated replacement
+for the current reduced model. Aggregate role differences can also arise
+from state/history selection; unconditional measurements alone do not
+identify a state-conditional causal mechanism. No empirical correction has
+been fitted into the analytical prediction.
+
 \end{document}
